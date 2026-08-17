@@ -52,7 +52,7 @@ static std::string build_chatml(const std::vector<ChatMsg> & msgs,
 // =========================
 extern "C"
 JNIEXPORT jstring JNICALL
-Java_com_example_llamaandroid_MainActivity_loadModel(
+Java_com_example_llamaandroid_MainActivity_loadModelNative(
         JNIEnv* env, jobject, jstring modelPath) {
 
     if (g_model != nullptr) {

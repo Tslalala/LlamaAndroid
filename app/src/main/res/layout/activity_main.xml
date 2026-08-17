@@ -7,31 +7,72 @@
     android:padding="8dp"
     tools:context=".MainActivity">
 
-    <!-- 顶部：模型状态 + 清空按钮 -->
+    <!-- ===== 顶部：模型管理区 ===== -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="vertical"
+        android:background="#EEEEEE"
+        android:padding="8dp">
 
-        <TextView
-            android:id="@+id/statusText"
-            android:layout_width="0dp"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:padding="8dp"
-            android:text="@string/status_initializing"
-            android:textStyle="bold"
-            android:background="#EEEEEE" />
+            android:orientation="horizontal">
 
-        <Button
-            android:id="@+id/clearButton"
-            android:layout_width="wrap_content"
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/model_section"
+                android:textStyle="bold"
+                android:layout_marginEnd="8dp" />
+
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/status_initializing" />
+
+            <Button
+                android:id="@+id/importButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/model_import" />
+
+            <Button
+                android:id="@+id/scanButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/model_scan" />
+        </LinearLayout>
+
+        <!-- 模型列表容器：代码动态为每个模型添加一个 Button -->
+        <LinearLayout
+            android:id="@+id/modelListContainer"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/clear"
-            android:enabled="false" />
+            android:orientation="vertical"
+            android:padding="4dp">
+
+            <TextView
+                android:id="@+id/modelListText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:textSize="12sp"
+                android:text="@string/model_none" />
+        </LinearLayout>
     </LinearLayout>
 
-    <!-- 对话区（可滚动） -->
+    <!-- ===== 分隔 ===== -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#CCCCCC"
+        android:layout_marginVertical="4dp" />
+
+    <!-- ===== 对话区 ===== -->
     <ScrollView
         android:id="@+id/resultScroll"
         android:layout_width="match_parent"
@@ -50,7 +91,7 @@
             android:text="@string/result_placeholder" />
     </ScrollView>
 
-    <!-- 性能指标区 -->
+    <!-- ===== 性能指标 ===== -->
     <TextView
         android:id="@+id/perfText"
         android:layout_width="match_parent"
@@ -59,10 +100,9 @@
         android:textSize="12sp"
         android:textColor="#666666"
         android:fontFamily="monospace"
-        android:background="#F5F5F5"
-        android:minLines="1" />
+        android:background="#F5F5F5" />
 
-    <!-- 输入区 -->
+    <!-- ===== 输入区 ===== -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -74,9 +114,16 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:hint="@string/input_hint"
-            android:inputType="textMultiLine"
-            android:maxLines="3"
+            android:inputType="text"
             android:imeOptions="actionSend"
+            android:singleLine="true"
+            android:enabled="false" />
+
+        <Button
+            android:id="@+id/clearButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/clear"
             android:enabled="false" />
 
         <Button

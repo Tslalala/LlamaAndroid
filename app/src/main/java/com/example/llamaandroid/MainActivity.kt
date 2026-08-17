@@ -1,85 +1,162 @@
 package com.example.llamaandroid
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.OpenableColumns
+import android.view.View
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.example.llamaandroid.databinding.ActivityMainBinding
-import java.io.File
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+    private lateinit var modelManager: ModelManager
+
     private var modelReady = false
     private var generating = false
+    private var scannedModels: List<ModelManager.ModelInfo> = emptyList()
 
-    private val modelName = "qwen3.5-0.8b-Q4_K_M.gguf"
+    // SAF 选择器：用户选择 .gguf 文件
+    private val openDocLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) importModel(uri)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        modelManager = ModelManager(this)
+
+        binding.importButton.setOnClickListener { onImportClick() }
+        binding.scanButton.setOnClickListener { refreshModelList() }
+        // modelListText 不再整体可点，每个模型独立 Button
         binding.sendButton.setOnClickListener { onSendClick() }
         binding.clearButton.setOnClickListener { onClearClick() }
-        updateUi()
 
-        prepareAndLoadModel()
+        // 软键盘「发送」键也触发发送
+        binding.inputEdit.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND) {
+                onSendClick(); true
+            } else false
+        }
+
+        updateUi()
+        refreshModelList()
     }
 
-    /**
-     * 1. 后台把模型从 assets 复制到 filesDir（首次）
-     * 2. 加载模型（只加载一次，全程复用）
-     */
-    private fun prepareAndLoadModel() {
-        binding.statusText.text = getString(R.string.status_initializing)
+    // =========================
+    // 模型管理
+    // =========================
+
+    private fun refreshModelList() {
+        scannedModels = modelManager.scan()
+        android.util.Log.i("LlamaAndroid", "refreshModelList: found ${scannedModels.size} models")
+        scannedModels.forEach { m ->
+            android.util.Log.i("LlamaAndroid", "  model: ${m.name} (${m.sizeText}, ${m.source}) path=${m.path}")
+        }
+
+        // 清掉容器里的旧 Button（保留第一个 TextView placeholder）
+        val container = binding.modelListContainer
+        // 只保留第一个子 View（modelListText）
+        while (container.childCount > 1) {
+            container.removeViewAt(1)
+        }
+
+        if (scannedModels.isEmpty()) {
+            binding.modelListText.text = getString(R.string.model_none)
+            binding.modelListText.visibility = android.view.View.VISIBLE
+        } else {
+            binding.modelListText.visibility = android.view.View.GONE
+            // 为每个模型创建一个 Button，点了直接加载
+            scannedModels.forEach { m ->
+                val btn = android.widget.Button(this).apply {
+                    text = "加载: ${m.name}  (${m.sizeText}, ${m.source})"
+                    isAllCaps = false
+                    setOnClickListener {
+                        android.util.Log.i("LlamaAndroid", "modelButton click: ${m.name}")
+                        loadModel(m)
+                    }
+                }
+                container.addView(btn)
+            }
+        }
+    }
+
+    private fun onImportClick() {
+        android.util.Log.i("LlamaAndroid", "onImportClick")
+        // SAF: 用通配类型确保能选到 gguf（部分设备不识别 application/octet-stream）
+        openDocLauncher.launch(arrayOf("*/*"))
+    }
+
+    private fun importModel(uri: Uri) {
+        val name = queryDisplayName(uri) ?: "imported_${System.currentTimeMillis()}.gguf"
+        if (!name.endsWith(".gguf", ignoreCase = true)) {
+            toast("请选择 .gguf 文件"); return
+        }
+        binding.statusText.text = getString(R.string.status_copying)
 
         Thread {
-            try {
-                val modelFile = File(filesDir, modelName)
-                if (!modelFile.exists()) {
-                    runOnUiThread { binding.statusText.text = getString(R.string.status_copying) }
-                    assets.open(modelName).use { input ->
-                        modelFile.outputStream().use { output ->
-                            val buffer = ByteArray(1024 * 1024)
-                            while (true) {
-                                val n = input.read(buffer)
-                                if (n <= 0) break
-                                output.write(buffer, 0, n)
-                            }
-                        }
-                    }
-                }
-                if (!modelFile.exists()) throw Exception("模型文件复制后仍不存在")
-
-                runOnUiThread { binding.statusText.text = getString(R.string.status_loading) }
-
-                // 调用 JNI loadModel
-                val loadResult = loadModel(modelFile.absolutePath)
-                if (!loadResult.startsWith("OK")) {
-                    runOnUiThread {
-                        binding.statusText.text = "ERROR: $loadResult"
-                    }
-                    return@Thread
-                }
-
-                runOnUiThread {
-                    binding.statusText.text = getString(R.string.status_ready)
-                    modelReady = true
-                    updateUi()
-                }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    binding.statusText.text = "ERROR: ${e.message}"
+            val target = modelManager.importFromUri(uri, name)
+            runOnUiThread {
+                if (target != null) {
+                    toast("导入成功: ${target.name}")
+                    refreshModelList()
+                    binding.statusText.text = "已导入: ${target.name}"
+                } else {
+                    binding.statusText.text = "ERROR: 导入失败"
                 }
             }
         }.start()
     }
 
-    /**
-     * 发：调 runChat，解析返回（answer + <<<PERF>>>...<<<END>>>），分别显示
-     */
+    private fun queryDisplayName(uri: Uri): String? {
+        var name: String? = null
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) name = c.getString(0)
+        }
+        return name
+    }
+
+    private fun loadModel(info: ModelManager.ModelInfo) {
+        android.util.Log.i("LlamaAndroid", "loadModel: name=${info.name} path=${info.path} generating=$generating")
+        if (generating) { toast("正在生成，请稍候"); return }
+        binding.statusText.text = getString(R.string.status_loading)
+        modelReady = false
+        updateUi()
+
+        Thread {
+            unloadModel() // 若之前已加载过，先卸载
+            val result = loadModelNative(info.path)
+            android.util.Log.i("LlamaAndroid", "loadModelNative result='$result' path='${info.path}'")
+            runOnUiThread {
+                if (result.startsWith("OK")) {
+                    modelReady = true
+                    binding.statusText.text = getString(R.string.model_loaded, info.name)
+                    binding.resultText.text = getString(R.string.result_placeholder)
+                    binding.perfText.text = ""
+                } else {
+                    binding.statusText.text = "ERROR: $result"
+                }
+                updateUi()
+            }
+        }.start()
+    }
+
+    // =========================
+    // 聊天
+    // =========================
     private fun onSendClick() {
+        android.util.Log.i("LlamaAndroid", "onSendClick: modelReady=$modelReady generating=$generating inputEnabled=${binding.inputEdit.isEnabled}")
         if (!modelReady || generating) return
         val question = binding.inputEdit.text.toString().trim()
+        android.util.Log.i("LlamaAndroid", "onSendClick: question='$question'")
         if (question.isEmpty()) return
 
         generating = true
@@ -115,7 +192,8 @@ class MainActivity : AppCompatActivity() {
         clearChat()
         binding.resultText.text = getString(R.string.result_placeholder)
         binding.perfText.text = ""
-        binding.statusText.text = getString(R.string.status_ready)
+        binding.statusText.text = if (modelReady) getString(R.string.status_ready)
+                                  else getString(R.string.chat_disabled)
     }
 
     /**
@@ -173,15 +251,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateUi() {
         val canSend = modelReady && !generating
+        android.util.Log.i("LlamaAndroid", "updateUi: modelReady=$modelReady generating=$generating canSend=$canSend")
         binding.sendButton.isEnabled = canSend
         binding.clearButton.isEnabled = modelReady && !generating
         binding.sendButton.text = if (generating) getString(R.string.status_generating)
                                   else getString(R.string.send)
         binding.inputEdit.isEnabled = canSend
+        if (!modelReady && !generating) {
+            binding.statusText.text = getString(R.string.chat_disabled)
+        }
     }
 
+    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+
     // ===== JNI =====
-    private external fun loadModel(modelPath: String): String
+    private external fun loadModelNative(modelPath: String): String
     private external fun runChat(userInput: String): String
     private external fun clearChat()
     private external fun unloadModel()

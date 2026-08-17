@@ -1,12 +1,25 @@
 <resources>
     <string name="app_name">LlamaAndroid</string>
-    <string name="status_initializing">正在准备模型...</string>
-    <string name="status_copying">正在复制模型，约 505 MB...</string>
+
+    <!-- 状态 -->
+    <string name="status_initializing">正在准备...</string>
+    <string name="status_copying">正在导入模型...</string>
     <string name="status_loading">正在加载模型...</string>
     <string name="status_ready">模型就绪</string>
     <string name="status_generating">生成中...</string>
+
+    <!-- 模型管理 -->
+    <string name="model_section">模型</string>
+    <string name="model_none">未找到模型，请点击「导入」选择手机上的 .gguf 文件</string>
+    <string name="model_import">导入模型</string>
+    <string name="model_load">加载</string>
+    <string name="model_loaded">已加载: %1$s</string>
+    <string name="model_scan">刷新</string>
+
+    <!-- 聊天 -->
     <string name="result_placeholder">对话将显示在这里</string>
     <string name="input_hint">输入你的问题</string>
     <string name="send">发送</string>
     <string name="clear">清空</string>
+    <string name="chat_disabled">请先加载模型</string>
 </resources>
