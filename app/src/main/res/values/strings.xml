@@ -1,3 +1,12 @@
 <resources>
     <string name="app_name">LlamaAndroid</string>
+    <string name="status_initializing">正在准备模型...</string>
+    <string name="status_copying">正在复制模型，约 505 MB...</string>
+    <string name="status_loading">正在加载模型...</string>
+    <string name="status_ready">模型就绪</string>
+    <string name="status_generating">生成中...</string>
+    <string name="result_placeholder">对话将显示在这里</string>
+    <string name="input_hint">输入你的问题</string>
+    <string name="send">发送</string>
+    <string name="clear">清空</string>
 </resources>

@@ -15,3 +15,5 @@
 local.properties
 # Large model files
 *.gguf
+# Local requirement docs
+/Prompts/
