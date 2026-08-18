@@ -80,6 +80,16 @@ class ModelManager(private val context: Context) {
         }
     }
 
+    /**
+     * 删除 app 私有目录中已导入的模型。
+     * 仅对 source=app 的模型有效（Download 目录的只读，不可删）。
+     * @return true 删除成功
+     */
+    fun deleteModel(name: String): Boolean {
+        val f = File(modelsDir, name)
+        return f.exists() && f.isFile && f.delete()
+    }
+
     companion object {
         fun formatSize(bytes: Long): String = when {
             bytes >= 1_000_000_000 -> "%.2f GB".format(bytes / 1_000_000_000.0)

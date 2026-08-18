@@ -10,10 +10,10 @@
 
     <!-- 模型管理 -->
     <string name="model_section">模型</string>
-    <string name="model_none">未找到模型，请点击「导入」选择手机上的 .gguf 文件</string>
+    <string name="model_none">未找到模型，点击右下角加号导入 .gguf 文件</string>
     <string name="model_import">导入模型</string>
     <string name="model_load">加载</string>
-    <string name="model_loaded">已加载: %1$s</string>
+    <string name="model_loaded">%1$s</string>
     <string name="model_scan">刷新</string>
 
     <!-- 聊天 -->
@@ -23,12 +23,30 @@
     <string name="clear">清空</string>
     <string name="chat_disabled">请先加载模型</string>
 
-    <!-- 设置 -->
+    <!-- 主页外观设置抽屉 -->
     <string name="settings">设置</string>
     <string name="settings_title">设置</string>
     <string name="settings_close">关闭</string>
+    <string name="dark_mode">黑夜模式</string>
+    <string name="dark_mode_hint">跟随系统或手动开关</string>
+
+    <!-- 模型级设置（卡片内） -->
+    <string name="per_model_settings">模型设置</string>
     <string name="thinking_mode">思考模式</string>
-    <string name="thinking_mode_hint">默认关闭。开启后模型可能输出思考过程（实验性，依赖模型能力）</string>
+    <string name="thinking_mode_hint">开启后模型可能输出思考过程（实验性，依赖模型能力）</string>
     <string name="max_ctx">最大上下文</string>
     <string name="max_ctx_hint">需重新加载模型生效。越大越占内存，但能容纳更长对话</string>
+    <string name="close">关闭</string>
+    <string name="confirm">确定</string>
+
+    <!-- 主页 -->
+    <string name="home_chat">进入对话</string>
+    <string name="home_delete">删除</string>
+    <string name="home_delete_confirm_title">删除模型</string>
+    <string name="home_delete_confirm_msg">确认删除 %1$s？此操作不可恢复</string>
+    <string name="home_deleted">已删除 %1$s</string>
+    <string name="home_status_empty">未找到模型，点击右下角加号导入 .gguf 文件</string>
+    <string name="home_status_importing">正在导入模型...</string>
+    <string name="home_status_count">共 %1$d 个可用模型</string>
+    <string name="cancel">取消</string>
 </resources>
