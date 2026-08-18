@@ -29,8 +29,8 @@ static std::vector<ChatMsg> g_history;
 // 增量 prefill 时新 token 的 pos 从 g_n_past 开始续接，不再清 KV
 static int32_t g_n_past = 0;
 
-// 上下文上限（与 loadModel 中 n_ctx 一致）
-static const int32_t N_CTX = 2048;
+// 上下文上限（由 loadModel 参数设置，默认 2048）
+static int32_t g_n_ctx = 2048;
 // 生成余量：每轮至少保留这么多空间给生成
 static const int32_t GEN_RESERVE = 512;
 
@@ -41,13 +41,20 @@ static const char * PERF_END   = "<<<END>>>";
 // 构造本轮增量 prompt：
 //   第一轮：含 system 块 + user 块 + assistant 起点
 //   后续轮：仅 user 块 + assistant 起点
-// 关键：每个块以 <|im_start|> 开头、以 \n 结尾，块间无半字符合并风险
+// 思考模式：thinking=true 时在 system 末尾追加 /no_think 反指示，强制关闭思考
+//   （llama.cpp 手动拼接 ChatML 不支持运行时切模板，只能用 prompt 指令控制）
 static std::string build_incremental_prompt(bool first_turn,
                                               const std::string & system_msg,
-                                              const std::string & user_str) {
+                                              const std::string & user_str,
+                                              bool thinking) {
     std::ostringstream ss;
     if (first_turn) {
-        ss << "<|im_start|>system\n" << system_msg << "<|im_end|>\n";
+        ss << "<|im_start|>system\n" << system_msg;
+        // 思考模式开关：默认关闭，关闭时追加 /no_think；开启时不追加（模型默认行为）
+        if (!thinking) {
+            ss << "\n/no_think";
+        }
+        ss << "<|im_end|>\n";
     }
     ss << "<|im_start|>user\n" << user_str << "<|im_end|>\n"
        << "<|im_start|>assistant\n";
@@ -55,12 +62,33 @@ static std::string build_incremental_prompt(bool first_turn,
 }
 
 // =========================
-// loadModel
+// JNI 助手：回调 Kotlin onTokenGenerated(String)
+// =========================
+static void emit_token(JNIEnv * env, jobject activity, const char * piece, int n_chars) {
+    if (!env || !activity || n_chars <= 0) return;
+
+    jclass cls = env->GetObjectClass(activity);
+    if (!cls) return;
+    jmethodID mid = env->GetMethodID(cls, "onTokenGenerated", "(Ljava/lang/String;)V");
+    if (!mid) {
+        env->DeleteLocalRef(cls);
+        return;
+    }
+    // 构造 String（piece 可能是 UTF-8 多字节字符，用 NewStringUTF 处理）
+    std::string s(piece, n_chars);
+    jstring js = env->NewStringUTF(s.c_str());
+    env->CallVoidMethod(activity, mid, js);
+    env->DeleteLocalRef(js);
+    env->DeleteLocalRef(cls);
+}
+
+// =========================
+// loadModel：接收 n_ctx 参数
 // =========================
 extern "C"
 JNIEXPORT jstring JNICALL
 Java_com_example_llamaandroid_MainActivity_loadModelNative(
-        JNIEnv* env, jobject, jstring modelPath) {
+        JNIEnv* env, jobject, jstring modelPath, jint n_ctx_param) {
 
     if (g_model != nullptr) {
         return env->NewStringUTF("OK: 模型已加载");
@@ -68,7 +96,7 @@ Java_com_example_llamaandroid_MainActivity_loadModelNative(
 
     const char * path = env->GetStringUTFChars(modelPath, nullptr);
     LOGI("==== loadModel start ====");
-    LOGI("model_path = %s", path);
+    LOGI("model_path = %s, n_ctx=%d", path, (int)n_ctx_param);
 
     llama_backend_init();
 
@@ -95,9 +123,15 @@ Java_com_example_llamaandroid_MainActivity_loadModelNative(
          (int)llama_vocab_bos(g_vocab), (int)llama_vocab_eos(g_vocab),
          (int)llama_vocab_get_add_bos(g_vocab), (int)llama_vocab_get_add_eos(g_vocab));
 
+    // 上下文长度：使用调用方传入值，clamp 到合理范围
+    int32_t n_ctx = n_ctx_param;
+    if (n_ctx < 512)  n_ctx = 512;
+    if (n_ctx > 8192) n_ctx = 8192;
+    g_n_ctx = n_ctx;
+
     llama_context_params cp = llama_context_default_params();
-    cp.n_ctx = N_CTX;
-    cp.n_batch = N_CTX;
+    cp.n_ctx = g_n_ctx;
+    cp.n_batch = g_n_ctx;
     cp.n_threads = 6;
     cp.n_threads_batch = 6;
     g_ctx = llama_init_from_model(g_model, cp);
@@ -120,21 +154,22 @@ Java_com_example_llamaandroid_MainActivity_loadModelNative(
     g_n_past = 0;
     llama_memory_clear(llama_get_memory(g_ctx), true);
 
-    LOGI("==== loadModel done (n_ctx=%d, incremental KV mode) ====", N_CTX);
+    LOGI("==== loadModel done (n_ctx=%d, incremental KV mode) ====", g_n_ctx);
     return env->NewStringUTF("OK: 模型加载完成");
 }
 
 // =========================
-// runChat：增量 KV cache
+// runChat：增量 KV cache + 流式回调
 //   - 不清 KV，仅对本轮新增的 user 块（首轮含 system）做 prefill
-//   - 生成的新 token 自动追加到 KV，pos 从 g_n_past 续接
-//   - 性能指标中 prompt_tokens 仅指本轮 prefill 的新增 token 数
+//   - 生成时每生成一个 token，立即回调 activity.onTokenGenerated(piece)
+//   - 性能指标通过返回值回传（最终一次）
 // 返回格式：answer<<<PERF>>>key=val;key=val<<<END>>>
+//   （流式期间已通过回调把 answer 推给 UI，返回值里的 answer 仅用于核对/兜底）
 // =========================
 extern "C"
 JNIEXPORT jstring JNICALL
 Java_com_example_llamaandroid_MainActivity_runChat(
-        JNIEnv* env, jobject, jstring userInput) {
+        JNIEnv* env, jobject activity, jstring userInput, jboolean thinking) {
 
     if (g_model == nullptr || g_ctx == nullptr || g_vocab == nullptr || g_sampler == nullptr) {
         return env->NewStringUTF("ERROR<<<PERF>>>err=模型未加载<<<END>>>");
@@ -145,16 +180,17 @@ Java_com_example_llamaandroid_MainActivity_runChat(
     env->ReleaseStringUTFChars(userInput, input);
 
     const bool first_turn = g_history.empty();
-    LOGI("==== runChat start, user='%s', history_turns=%d, n_past=%d, first_turn=%d ====",
-         user_str.c_str(), (int)g_history.size(), g_n_past, (int)first_turn);
+    LOGI("==== runChat start, user='%s', history_turns=%d, n_past=%d, first_turn=%d, thinking=%d ====",
+         user_str.c_str(), (int)g_history.size(), g_n_past, (int)first_turn, (int)thinking);
 
     // 1. 加入用户消息到历史
     g_history.push_back({"user", user_str});
 
-    // 2. 构造本轮增量 prompt（system 仅第一轮）
+    // 2. 构造本轮增量 prompt（system 仅第一轮，思考模式开关影响 system）
     std::string system_msg = "你是 Qwen，一个乐于助人的 AI 助手。请用简洁的中文回答。";
-    std::string prompt = build_incremental_prompt(first_turn, system_msg, user_str);
-    LOGI("incremental prompt: first_turn=%d, prompt_len=%d", (int)first_turn, (int)prompt.size());
+    std::string prompt = build_incremental_prompt(first_turn, system_msg, user_str, thinking);
+    LOGI("incremental prompt: first_turn=%d, thinking=%d, prompt_len=%d",
+         (int)first_turn, (int)thinking, (int)prompt.size());
 
     // 3. Tokenize（add_special=false，parse_special=true）
     int32_t n_tokens = llama_tokenize(g_vocab,
@@ -163,7 +199,7 @@ Java_com_example_llamaandroid_MainActivity_runChat(
                                        /*add_special=*/false, /*parse_special=*/true);
     if (n_tokens >= 0) {
         LOGE("ERROR: tokenize 取长度失败: %d", n_tokens);
-        g_history.pop_back(); // 回滚
+        g_history.pop_back();
         return env->NewStringUTF("ERROR: tokenize 失败<<<PERF>>>err=tokenize_len<<<END>>>");
     }
     n_tokens = -n_tokens;
@@ -183,10 +219,10 @@ Java_com_example_llamaandroid_MainActivity_runChat(
     LOGI("incremental prefill n_tokens=%d (cumulative n_past=%d)",
          n_tokens, g_n_past);
 
-    // 4. 检查 context 上限：当前已用 + 本轮 prefill + 生成余量 不能超过 n_ctx
-    if (g_n_past + n_tokens + GEN_RESERVE > N_CTX) {
+    // 4. 检查 context 上限
+    if (g_n_past + n_tokens + GEN_RESERVE > g_n_ctx) {
         LOGE("ERROR: 上下文已满 n_past=%d + inc=%d + reserve=%d > n_ctx=%d",
-             g_n_past, n_tokens, GEN_RESERVE, N_CTX);
+             g_n_past, n_tokens, GEN_RESERVE, g_n_ctx);
         g_history.pop_back();
         return env->NewStringUTF("ERROR: 上下文已满，请清空对话后重试<<<PERF>>>err=ctx_overflow<<<END>>>");
     }
@@ -214,10 +250,10 @@ Java_com_example_llamaandroid_MainActivity_runChat(
     }
 
     auto t_first_token = std::chrono::steady_clock::now();
-    int32_t prompt_tokens = n_tokens;     // 本轮新增 prefill 的 token 数（非累计）
-    g_n_past += n_tokens;                  // KV 累计位置推进
+    int32_t prompt_tokens = n_tokens;
+    g_n_past += n_tokens;
 
-    // 6. 生成
+    // 6. 流式生成
     std::string output;
     const int max_new_tokens = 512;
     int generated = 0;
@@ -237,10 +273,12 @@ Java_com_example_llamaandroid_MainActivity_runChat(
                                             0, /*special=*/true);
         if (n_chars > 0) {
             output.append(piece, n_chars);
+            // 流式回调：把当前 token piece 推给 UI
+            emit_token(env, activity, piece, n_chars);
         }
         ++generated;
 
-        // 单 token decode：pos 接在当前 KV 之后（g_n_past 已含本轮 prefill）
+        // 单 token decode：pos 接在当前 KV 之后
         batch.n_tokens    = 1;
         batch.token[0]    = new_token;
         batch.pos[0]      = g_n_past + i;
@@ -252,6 +290,9 @@ Java_com_example_llamaandroid_MainActivity_runChat(
         if (result != 0) {
             LOGE("ERROR: gen decode failed at i=%d result=%d", i, result);
             output += "\n[ERROR] gen decode result=" + std::to_string(result);
+            // 回调一次错误信息让 UI 知道
+            std::string err = "\n[ERROR] gen decode result=" + std::to_string(result);
+            emit_token(env, activity, err.c_str(), (int)err.size());
             break;
         }
     }
@@ -259,7 +300,7 @@ Java_com_example_llamaandroid_MainActivity_runChat(
     auto t_end = std::chrono::steady_clock::now();
     llama_batch_free(batch);
 
-    // 7. 把回答加入历史（已在 KV 中，下轮不必再 prefill）
+    // 7. 把回答加入历史（已在 KV 中）
     g_n_past += generated;
     g_history.push_back({"assistant", output});
 
@@ -268,7 +309,6 @@ Java_com_example_llamaandroid_MainActivity_runChat(
     double total_ms   = std::chrono::duration<double, std::milli>(t_end - t_start).count();
     double decode_ms  = std::chrono::duration<double, std::milli>(t_end - t_first_token).count();
 
-    // TTFT（首 token 时间）≈ 本轮 prefill 时间（增量块，不再含历史）
     double ttft_s   = prefill_ms / 1000.0;
     double total_s  = total_ms / 1000.0;
     double decode_s = decode_ms / 1000.0;
@@ -280,23 +320,33 @@ Java_com_example_llamaandroid_MainActivity_runChat(
     LOGI("perf: inc_prefill_tokens=%d generated=%d n_past_after=%d ttft=%.3fs prefill=%.0ftok/s decode=%.0ftok/s total=%.3fs",
          prompt_tokens, generated, g_n_past, ttft_s, prefill_speed, decode_speed, total_s);
 
-    // 8. 拼接返回
-    std::ostringstream ret;
-    ret << output
-        << PERF_BEGIN
-        << "prefill_t=" << prefill_ms << "ms;"
-        << "prompt_tokens=" << prompt_tokens << ";"        // 本轮新增 prefill 数
-        << "n_past=" << g_n_past << ";"                     // KV 累计位置
-        << "prefill_speed=" << (int)prefill_speed << "tok/s;"
-        << "ttft=" << std::fixed << std::setprecision(3) << ttft_s << "s;"
-        << "decode_t=" << decode_ms << "ms;"
-        << "generated=" << generated << ";"
-        << "decode_speed=" << (int)decode_speed << "tok/s;"
-        << "total=" << total_s << "s"
-        << PERF_END;
+    // 8. 拼接返回（answer 段保留作兜底；流式期间已推送过，UI 也可选择用最终值覆盖）
+    // perf 字段：speed 类保留 2 位小数（避免 (int) 强转丢失精度导致 .00 问题）
+    {
+        std::ostringstream ss_spd;
+        ss_spd << std::fixed << std::setprecision(2) << prefill_speed;
+        std::string prefill_speed_str = ss_spd.str();
+        std::ostringstream ss_dsp;
+        ss_dsp << std::fixed << std::setprecision(2) << decode_speed;
+        std::string decode_speed_str = ss_dsp.str();
 
-    LOGI("==== runChat end, out_len=%d, n_past=%d ====", (int)output.size(), g_n_past);
-    return env->NewStringUTF(ret.str().c_str());
+        std::ostringstream ret;
+        ret << output
+            << PERF_BEGIN
+            << "prefill_t=" << prefill_ms << "ms;"
+            << "prompt_tokens=" << prompt_tokens << ";"
+            << "n_past=" << g_n_past << ";"
+            << "prefill_speed=" << prefill_speed_str << "tok/s;"
+            << "ttft=" << std::fixed << std::setprecision(3) << ttft_s << "s;"
+            << "decode_t=" << decode_ms << "ms;"
+            << "generated=" << generated << ";"
+            << "decode_speed=" << decode_speed_str << "tok/s;"
+            << "total=" << total_s << "s"
+            << PERF_END;
+
+        LOGI("==== runChat end, out_len=%d, n_past=%d ====", (int)output.size(), g_n_past);
+        return env->NewStringUTF(ret.str().c_str());
+    }
 }
 
 // =========================
@@ -323,6 +373,7 @@ Java_com_example_llamaandroid_MainActivity_unloadModel(JNIEnv*, jobject) {
     LOGI("==== unloadModel ====");
     g_history.clear();
     g_n_past = 0;
+    g_n_ctx = 2048;
     if (g_sampler) { llama_sampler_free(g_sampler); g_sampler = nullptr; }
     if (g_ctx)     { llama_free(g_ctx); g_ctx = nullptr; }
     if (g_model)   { llama_model_free(g_model); g_model = nullptr; }

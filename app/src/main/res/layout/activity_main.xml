@@ -1,137 +1,267 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/drawerLayout"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="8dp"
-    tools:context=".MainActivity">
+    android:layout_height="match_parent">
 
-    <!-- ===== 顶部：模型管理区 ===== -->
+    <!-- ===== 主界面 ===== -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
         android:orientation="vertical"
-        android:background="#EEEEEE"
-        android:padding="8dp">
+        tools:context=".MainActivity">
 
+        <!-- ===== 顶部：模型管理区 ===== -->
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/model_section"
-                android:textStyle="bold"
-                android:layout_marginEnd="8dp" />
-
-            <TextView
-                android:id="@+id/statusText"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="@string/status_initializing" />
-
-            <Button
-                android:id="@+id/importButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/model_import" />
-
-            <Button
-                android:id="@+id/scanButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/model_scan" />
-        </LinearLayout>
-
-        <!-- 模型列表容器：代码动态为每个模型添加一个 Button -->
-        <LinearLayout
-            android:id="@+id/modelListContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="4dp">
+            android:background="#F5F5F5"
+            android:padding="12dp">
 
-            <TextView
-                android:id="@+id/modelListText"
+            <!-- 第 1 行：状态文字（独占一行，避免与按钮挤压） -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:textSize="12sp"
-                android:text="@string/model_none" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/model_section"
+                    android:textStyle="bold"
+                    android:textSize="14sp"
+                    android:layout_marginEnd="8dp" />
+
+                <TextView
+                    android:id="@+id/statusText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/status_initializing"
+                    android:textSize="13sp"
+                    android:ellipsize="end"
+                    android:maxLines="2" />
+            </LinearLayout>
+
+            <!-- 第 2 行：3 个操作按钮均匀分布，不挤压 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
+
+                <Button
+                    android:id="@+id/importButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/model_import"
+                    android:textSize="13sp"
+                    android:minHeight="40dp"
+                    android:layout_marginEnd="4dp" />
+
+                <Button
+                    android:id="@+id/scanButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/model_scan"
+                    android:textSize="13sp"
+                    android:minHeight="40dp"
+                    android:layout_marginEnd="4dp" />
+
+                <Button
+                    android:id="@+id/settingsButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/settings"
+                    android:textSize="13sp"
+                    android:minHeight="40dp" />
+            </LinearLayout>
+
+            <!-- 第 3 行：模型列表容器 -->
+            <LinearLayout
+                android:id="@+id/modelListContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/modelListText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:textSize="12sp"
+                    android:text="@string/model_none" />
+            </LinearLayout>
         </LinearLayout>
-    </LinearLayout>
 
-    <!-- ===== 分隔 ===== -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="#CCCCCC"
-        android:layout_marginVertical="4dp" />
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#DDDDDD" />
 
-    <!-- ===== 对话区 ===== -->
-    <ScrollView
-        android:id="@+id/resultScroll"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:fillViewport="true">
+        <!-- ===== 对话区 ===== -->
+        <ScrollView
+            android:id="@+id/resultScroll"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:fillViewport="true"
+            android:scrollbars="vertical"
+            android:overScrollMode="never">
 
+            <TextView
+                android:id="@+id/resultText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="12dp"
+                android:textSize="15sp"
+                android:lineSpacingExtra="4dp"
+                android:textIsSelectable="true"
+                android:text="@string/result_placeholder" />
+        </ScrollView>
+
+        <!-- ===== 性能指标 ===== -->
         <TextView
-            android:id="@+id/resultText"
+            android:id="@+id/perfText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="8dp"
+            android:padding="10dp"
+            android:textSize="11sp"
+            android:textColor="#444444"
             android:fontFamily="monospace"
-            android:textSize="14sp"
-            android:textIsSelectable="true"
-            android:text="@string/result_placeholder" />
-    </ScrollView>
+            android:background="#F0F0F0"
+            android:lineSpacingExtra="2dp" />
 
-    <!-- ===== 性能指标 ===== -->
-    <TextView
-        android:id="@+id/perfText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="8dp"
-        android:textSize="12sp"
-        android:textColor="#666666"
-        android:fontFamily="monospace"
-        android:background="#F5F5F5" />
-
-    <!-- ===== 输入区 ===== -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
-
-        <EditText
-            android:id="@+id/inputEdit"
-            android:layout_width="0dp"
+        <!-- ===== 输入区 ===== -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="@string/input_hint"
-            android:inputType="text"
-            android:imeOptions="actionSend"
-            android:singleLine="true"
-            android:enabled="false" />
+            android:orientation="horizontal"
+            android:padding="4dp">
 
-        <Button
-            android:id="@+id/clearButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/clear"
-            android:enabled="false" />
+            <EditText
+                android:id="@+id/inputEdit"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="@string/input_hint"
+                android:inputType="text"
+                android:imeOptions="actionSend"
+                android:singleLine="true"
+                android:enabled="false"
+                android:textSize="14sp" />
 
-        <Button
-            android:id="@+id/sendButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/send"
-            android:enabled="false" />
+            <Button
+                android:id="@+id/clearButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/clear"
+                android:enabled="false"
+                android:minHeight="44dp" />
+
+            <Button
+                android:id="@+id/sendButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/send"
+                android:enabled="false"
+                android:minHeight="44dp"
+                android:backgroundTint="#1565C0"
+                android:textColor="#FFFFFF" />
+        </LinearLayout>
+
     </LinearLayout>
 
-</LinearLayout>
+    <!-- ===== 设置抽屉（右侧滑出） ===== -->
+    <LinearLayout
+        android:layout_width="300dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:orientation="vertical"
+        android:background="#FFFFFF"
+        android:padding="20dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="24dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/settings_title"
+                android:textStyle="bold"
+                android:textSize="18sp" />
+
+            <Button
+                android:id="@+id/settingsCloseButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_close"
+                android:minHeight="40dp" />
+        </LinearLayout>
+
+        <!-- 思考模式开关 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/thinking_mode"
+                android:textSize="15sp" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/thinkingSwitch"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/thinking_mode_hint"
+            android:textSize="11sp"
+            android:textColor="#888888"
+            android:layout_marginBottom="24dp" />
+
+        <!-- 最大上下文选择 -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/max_ctx"
+            android:textSize="15sp"
+            android:layout_marginBottom="8dp" />
+
+        <Spinner
+            android:id="@+id/ctxSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/max_ctx_hint"
+            android:textSize="11sp"
+            android:textColor="#888888"
+            android:layout_marginTop="4dp" />
+
+    </LinearLayout>
+
+</androidx.drawerlayout.widget.DrawerLayout>

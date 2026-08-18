@@ -22,4 +22,13 @@
     <string name="send">发送</string>
     <string name="clear">清空</string>
     <string name="chat_disabled">请先加载模型</string>
+
+    <!-- 设置 -->
+    <string name="settings">设置</string>
+    <string name="settings_title">设置</string>
+    <string name="settings_close">关闭</string>
+    <string name="thinking_mode">思考模式</string>
+    <string name="thinking_mode_hint">默认关闭。开启后模型可能输出思考过程（实验性，依赖模型能力）</string>
+    <string name="max_ctx">最大上下文</string>
+    <string name="max_ctx_hint">需重新加载模型生效。越大越占内存，但能容纳更长对话</string>
 </resources>
